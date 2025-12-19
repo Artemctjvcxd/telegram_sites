@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Онлайн магазин с оплатой</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f5f5f5;
+    padding: 20px;
+    margin: 0;
+}
+
+h1 { text-align: center; }
+
+.products {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.product {
+    background: #fff;
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    position: relative;
+}
+
+.product img {
+    width: 150px;
+    margin-bottom: 10px;
+}
+
+button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    background-color: #0088cc;
+    color: #fff;
+    cursor: pointer;
+    font-size: 15px;
+    margin: 5px 0;
+}
+
+button:hover { background-color: #006699; }
+
+/* ===== MODAL ===== */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.modal.show {
+    display: flex;
+    opacity: 1;
+}
+
+.modal-content {
+    background: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 350px;
+    text-align: center;
+    position: relative;
+    transform: translateY(-50px);
+    transition: transform 0.3s ease;
+}
+
+.modal.show .modal-content {
+    transform: translateY(0);
+}
+
+.close-btn {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 22px;
+    cursor: pointer;
+    color: #888;
+}
+
+.close-btn:hover { color: #000; }
+
+.modal-content input {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    font-size: 16px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+}
+
+/* ===== КОРЗИНА ===== */
+.cart {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #fff;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    max-width: 250px;
+    cursor: pointer;
+}
+
+.cart h3 { margin-top: 0; }
+
+.cart ul { list-style: none; padding: 0; margin: 10px 0 0 0; display: none; }
+
+.cart.show ul { display: block; }
+
+.cart li { display: flex; justify-content: space-between; margin-bottom: 5px; }
+
+/* ===== ЛЕТЯЩЕЕ ИЗОБРАЖЕНИЕ ===== */
+.flying-img {
+    position: fixed;
+    width: 50px;
+    height: 50px;
+    z-index: 1000;
+    pointer-events: none;
+    transition: transform 0.8s cubic-bezier(0.65, -0.1, 0.35, 1.1), opacity 0.8s ease;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Онлайн магазин с оплатой</h1>
+
+<div class="products">
+    <div class="product">
+        <img src="pizza.png" alt="Пицца">
+        <h3>Пицца</h3>
+        <button onclick="addToCart('Пицца', this)">Добавить в корзину</button>
+        <button onclick="showInfo('Пицца')">Информация о товаре</button>
+    </div>
+    <div class="product">
+        <img src="burger.png" alt="Бургер">
+        <h3>Бургер</h3>
+        <button onclick="addToCart('Бургер', this)">Добавить в корзину</button>
+        <button onclick="showInfo('Бургер')">Информация о товаре</button>
+    </div>
+</div>
+
+<!-- ===== MODAL ===== -->
+<div class="modal" id="orderModal" onclick="closeOrder(event)">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeOrder()">×</span>
+        <h3>Оформление и оплата заказа</h3>
+        <input type="tel" id="phone" placeholder="Телефон">
+        <input type="email" id="email" placeholder="Email">
+        <button onclick="payOrder()">Оплатить заказ</button>
+    </div>
+</div>
+
+<!-- ===== КОРЗИНА ===== -->
+<div class="cart" id="cart" onclick="toggleCart()">
+    <h3>Корзина</h3>
+    <ul id="cartItems"></ul>
+    <button onclick="checkout(); event.stopPropagation()">Оформить корзину</button>
+</div>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+const tg = window.Telegram.WebApp;
+let cart = [];
+
+// Автозаполнение телефона через Telegram
+tg.ready();
+document.getElementById('phone').value = tg.initDataUnsafe?.user?.phone_number || '';
+
+// Добавление товара в корзину с анимацией
+function addToCart(product, btn) {
+    cart.push(product);
+    renderCart();
+    flyToCart(btn);
+}
+
+// Отображение корзины
+function renderCart() {
+    const cartItems = document.getElementById('cartItems');
+    cartItems.innerHTML = '';
+    cart.forEach((item, index) => {
+        const li = document.createElement('li');
+        li.innerHTML = `${item} <button onclick="removeFromCart(${index})">×</button>`;
+        cartItems.appendChild(li);
+    });
+}
+
+// Удаление из корзины
+function removeFromCart(index) {
+    cart.splice(index, 1);
+    renderCart();
+}
+
+// Показ информации о товаре
+function showInfo(product) {
+    alert(`Информация о товаре: ${product}\nЗдесь можно добавить описание, состав, цену и т.д.`);
+}
+
+// Открытие/закрытие корзины по клику
+function toggleCart() {
+    document.getElementById('cart').classList.toggle('show');
+}
+
+// Оформление заказа
+function checkout() {
+    if (cart.length === 0) {
+        alert('Корзина пуста!');
+        return;
+    }
+    openOrder();
+}
+
+// Открытие модального окна
+function openOrder() {
+    document.getElementById('orderModal').classList.add('show');
+}
+
+// Закрытие модального окна
+function closeOrder(event) {
+    if (!event || event.target.id === 'orderModal') {
+        document.getElementById('orderModal').classList.remove('show');
+    }
+}
+
+// Отправка данных для оплаты через Telegram
+function payOrder() {
+    if (cart.length === 0) {
+        alert('Корзина пуста!');
+        return;
+    }
+
+    const phone = document.getElementById('phone').value.trim();
+    const email = document.getElementById('email').value.trim();
+
+    if (!phone || !email) {
+        alert('Пожалуйста, заполните все поля');
+        return;
+    }
+
+    const total = calculateTotal();
+
+    // Здесь должен быть сервер, создающий invoice через Telegram Bot API
+    // Для примера, используем фейковую ссылку
+    const fakeInvoiceUrl = `https://t.me/pay?amount=${total}&products=${encodeURIComponent(cart.join(', '))}`;
+
+    tg.openLink(fakeInvoiceUrl);
+
+    // Очистка корзины
+    cart = [];
+    renderCart();
+    closeOrder();
+}
+
+// Функция для расчёта суммы корзины
+function calculateTotal() {
+    let total = 0;
+    cart.forEach(item => {
+        if (item === 'Пицца') total += 500; // цена в рублях
+        if (item === 'Бургер') total += 300;
+    });
+    return total;
+}
+
+// Анимация "летящего" изображения
+function flyToCart(button) {
+    const productImg = button.closest('.product').querySelector('img');
+    const flyingImg = productImg.cloneNode(true);
+    flyingImg.classList.add('flying-img');
+    document.body.appendChild(flyingImg);
+
+    const rect = productImg.getBoundingClientRect();
+    flyingImg.style.left = rect.left + 'px';
+    flyingImg.style.top = rect.top + 'px';
+
+    const cartRect = document.getElementById('cart').getBoundingClientRect();
+
+    setTimeout(() => {
+        flyingImg.style.transform = `translate(${cartRect.left - rect.left}px, ${cartRect.top - rect.top}px) scale(0.1)`;
+        flyingImg.style.opacity = '0';
+    }, 10);
+
+    setTimeout(() => {
+        flyingImg.remove();
+    }, 900);
+}
+</script>
+</body>
+</html>
